@@ -1,0 +1,507 @@
+---
+title: "Napa-sulfur-isotopes-analysis"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+# Code for analyzing sulfur isotope data comparing vineyard agriculture and non-agricultural areas of the Napa River Watershed, CA, USA
+
+## Description
+This repository includes data visualization and analysis code used for the manuscript:
+Hermes, A.L., Dawson, T.E., and Hinckley, E.-L.S. (submitted March 2021) Sulfur isotopes fingerprint new aspects of sulfur cycling in human-dominated systems.
+
+## Setup
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(readxl)
+library(reshape)
+library(data.table)
+
+require("knitr")
+
+setwd("D:/Google Drive/Research/HermesA_Research/MasterDataSheets/Napa/Packages/MAP")
+
+```
+
+## Import and clean data
+A number of input datasets are required that are either provided in this repository or can be downloaded from public domain sources.
+
+### watershed-wide sulfur isotopes (this study)
+These data were generated for this manuscript.
+
+Download "NapaSulfurIsotopes_v1.csv" from:
+https://doi.org/10.6073/pasta/8b81b39d87d5f70325420294ffc83ddf
+
+```{r import-watershed-S-isotopes}
+
+# import data table
+all <- read.csv("NapaSulfurIsotopes_v1.csv")
+
+# check it out!
+summary(all)
+
+# update class types
+all$site_name <- as.factor(all$site_name)
+all$sample_type <- as.factor(all$sample_type)
+all$prcnt_vineyard <- as.numeric(all$prcnt_vineyard)
+all$prcnt_native <- as.numeric(all$prcnt_native)
+all$prcnt_other <- as.numeric(all$prcnt_other)
+all$sulfate_mgSperL <- as.numeric(all$sulfate_mgSperL)
+all$d34S <- as.numeric(all$d34S) 
+all$WY <- as.factor(all$WY)
+all$sample_collection_date <- as.Date(all$sample_collection_date)
+
+
+summary(all)
+
+```
+
+Remove outlier
+```{r minus-outlier}
+# remove the funky irrigation water and d34S NA vals
+allno <- filter(all, d34S < 22)
+
+```
+
+Make a data table without the S-fungicide data
+```{r remove-S-fungicide}
+# S fungicide numbers will plot separately - remove for sulfate-d34s map figures
+allnoF <- filter(allno, sample_type != "sulfur fungicide")
+
+```
+
+### lab soil leachate sulfur isotopes (prior study)
+These data are from the following citation:
+Hermes, A.L., Ebel, B.A., Murphy, S.F., and E.-L.S. Hinckley (2021). Fates and fingerprints of sulfur and carbon following wildfire in economically important croplands of California, U.S. Science of the Total Environment, 750(1): 142179.
+https://doi.org/10.1016/j.scitotenv.2020.142179
+
+Data are available through the Environmental Data Initiative.
+Download the "napa_fire_leachingexpisotopes.csv" table from:
+https://doi.org/10.6073/pasta/4473046a81e564b5bc0ccedcc2def131
+
+```{r import-lab-soil-leachate-S-isotopes}
+
+# import data table
+leach <- read.csv("napa_fire_leachingexpisotopes.csv")
+
+# check it out!
+summary(leach)
+
+# rename columns
+colnames(leach)[6] <- "d34S"
+colnames(leach)[7] <- "sulfate_mgSperL"
+
+# only keep grassland and vineyard (not the burned samples)
+leachfilt <- filter(leach, burn_unburn == "unburned")
+
+# rename "grassland" to "native"
+leachfilt$site_type[leachfilt$site_type == "grassland"] <- "native"
+
+# create a % vineyard column
+leachfilt$prcnt_vineyard <- as.numeric(as.factor(leachfilt$site_type))
+leachfilt$prcnt_vineyard[leachfilt$prcnt_vineyard == 1] <- 0
+leachfilt$prcnt_vineyard[leachfilt$prcnt_vineyard == 2] <- 100
+
+```
+
+### intensive source sulfur isotopes (prior study)
+These data are from the following citation:
+Hinckley, E.-L.S., Kendall, C., and Loague, K. (2008) Not all water becomes wine: Sulfur inputs as an opportune tracer of hydrochemcial losses from vineyards. Water Resources Research, 44(7): W00401.
+https://doi.org/10.1029/2007WR006672
+
+Download the "hinckley-etal-2008-WRR.csv" table from this Github repository.
+
+```{r import-Hinckley-data}
+
+# import data table
+hinckley <- read.csv("hinckley-etal-2008-WRR.csv")
+
+# check it out!
+summary(hinckley)
+
+# convert sample_type to a factor
+hinckley$sample_type <- as.factor(hinckley$sample_type)
+
+# convert sulfate as sulfate to sulfate as sulfur
+hinckley$sulfate_mgSperL <- hinckley$sulfate_ppm * 32.065/96.06
+
+```
+
+## Plot data
+
+### Manuscript Figure 2a
+This figure plots sulfate concentration vs. sulfur isotope values.
+Sample type is designated by point shape.
+Land use/land cover category is designated by color.
+
+```{r plot-Fig2a}
+
+colorLULC_discrete <- ggplot() +
+  # layer in all samples except the Napa River
+  geom_point(data = filter(allnoF, lulc_abbrev != "napa river"),
+                     aes(sulfate_mgSperL,
+                         d34S,
+                         shape = sample_type,
+                         color = lulc_abbrev),
+             stroke = 1.1, size = 4) +
+  # then add in Napa River points so that they show up over the rest
+  geom_point(data = filter(allnoF, lulc_abbrev == "napa river"),
+             aes(sulfate_mgSperL,
+                 d34S,
+                 shape = sample_type,
+                 color = lulc_abbrev),
+             stroke = 1.1,
+             size = 4) +
+  scale_shape_manual(values = c(5, 8, 4, 1, 17)) +
+  scale_color_manual(values = c("darkorange1","black","springgreen4","violetred")) +
+  labs(x = expression(paste("SO"[4]^2^-{},"(mg S L"^-1,")")),
+       y = expression(paste(delta^{34}, "S-SO"[4]^2^-{}, "(\u2030)")),
+       shape = "Sample Type:",
+       color = "LULC:") +
+  scale_x_continuous(limits = c(0, 80), breaks = seq(0, 80, 10), expand = expansion(mult = c(0.02,0))) + 
+  scale_y_continuous(limits = c(-10, 20), breaks = seq(-10, 20, 5), expand = expansion(mult = c(0.02,0.02))) +
+  theme_bw() +
+  theme(axis.title.x = element_text(size = 20),
+        axis.text.x  = element_text(size = 20,
+                                    color = "black"),
+        axis.title.y = element_text(size = 20),
+        axis.text.y = element_text(size = 20,
+                                   color = "black"),
+        plot.title = element_text(size = 20),
+        legend.title = element_text(size = 20),
+        legend.position = "right",
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        rect = element_rect(fill = "transparent"),
+        panel.background = element_rect(fill = "transparent", color = NA),
+        plot.background = element_rect(fill = "transparent", color = NA)) +
+  theme(legend.text = element_text(size = 16)) +
+  theme(legend.text.align = 0)
+
+# take a look!
+colorLULC_discrete
+
+```
+
+```{r save-Fig2a}
+ggsave(colorLULC_discrete, filename = "sulfate-d34S_colorLULC.png",
+       width = 8,
+       height = 4,
+       bg = "transparent")
+```
+
+### Manuscript Figure 2b
+This figure adds in laboratory soil leachate data and plots a subset of samples to depict sulfur sources and processing.
+As in Fig 2a, sample type is designated by point shape.
+Land use/land cover category is designated by color.
+
+NOTE: This figure was annotated with arrows in the printed manuscript.
+```{r plot-Fig2b}
+
+# First determine x and y ranges for precipitation and irrigation water
+
+# From Hinckley et al. (2008)
+hinckley %>% group_by(sample_type) %>% summarise(minSO4 = min(sulfate_mgSperL, na.rm = TRUE),
+                                                 maxSO4 = max(sulfate_mgSperL, na.rm = TRUE),
+                                                 mind34S = min(d34S, na.rm = TRUE),
+                                                 maxd34S = max(d34S, na.rm = TRUE))
+
+# From this study
+allno %>% group_by(sample_type) %>% summarise(minSO4 = min(sulfate_mgSperL, na.rm = TRUE),
+                                                 maxSO4 = max(sulfate_mgSperL, na.rm = TRUE),
+                                                 mind34S = min(d34S, na.rm = TRUE),
+                                                 maxd34S = max(d34S, na.rm = TRUE))
+
+# And the median and range of S fungicide values
+all %>% group_by(sample_type) %>% summarise(mind34S = min(d34S, na.rm = TRUE),
+                                            maxd34S = max(d34S, na.rm = TRUE),
+                                            meand34S = mean(d34S, na.rm = TRUE),
+                                            mediand34S = median(d34S, na.rm = TRUE))
+
+# Then make the plot
+zoomin <- ggplot() +
+  # First plot a shaded box that encompasses all precip/irrigation sulfur "source" values
+  annotate("rect",
+           xmin = 0.16,
+           xmax = 3.24,
+           ymin = 2.44,
+           ymax = 7.47,
+           alpha = 0.5,
+           fill = "gray") +
+  # Then plot the S fungicide values
+  # median = 3.09, min = 0.95, max = 4.97
+  annotate("pointrange",
+           x = 0,
+           y = 3.09,
+           ymin = 0.95,
+           ymax = 4.97,
+           color = "saddlebrown",
+           size = 1) +
+  # Then add laboratory soil leachate as a laboratory-based "endmember"
+  geom_point(data = leachfilt,
+             aes(sulfate_mgSperL,
+                 d34S,
+                 color = site_type),
+             shape = 3,
+             size = 3) +
+  # And finally a subset of data that shows mixing in between
+  geom_point(data = filter(allnoF,site_name %in% c("Valley vineyard 1",
+                                                        "Valley vineyard 2",
+                                                        "Moore Creek", 
+                                                        "To Kalon Creek",
+                                                        "grassland",
+                                                        "Huichica Creek")),
+                     aes(sulfate_mgSperL,
+                         d34S,
+                         shape = sample_type,
+                         color = lulc_abbrev),
+             stroke = 1.1,
+             size = 4) + 
+  scale_shape_manual(values = c(5, 4, 17)) +
+  scale_color_manual(values = c("darkorange1","springgreen4","violetred")) +
+  labs(x = expression(paste("SO"[4]^2^-{},"(mg S L"^-1,")")),
+       y = expression(paste(delta^{34}, "S-SO"[4]^2^-{}, "(\u2030)")),
+       shape = "Sample Type:",
+       color = "LULC:") +
+  scale_x_continuous(limits = c(0, 80), breaks = seq(0, 80, 10), expand = expansion(mult = c(0.02,0))) + 
+  scale_y_continuous(limits = c(-5, 20), breaks = seq(-5, 20, 5), expand = expansion(mult = c(0.02,0.02))) +
+  theme_bw() +
+  theme(axis.title.x = element_text(size = 20),
+        axis.text.x  = element_text(size = 20,
+                                    color = "black"),
+        axis.title.y = element_text(size = 20),
+        axis.text.y = element_text(size = 20,
+                                   color = "black"),
+        plot.title = element_text(size = 20),
+        legend.title = element_text(size = 20),
+        legend.position = "right",
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        rect = element_rect(fill = "transparent"),
+        panel.background = element_rect(fill = "transparent", color = NA),
+        plot.background = element_rect(fill = "transparent", color = NA)) +
+  theme(legend.text = element_text(size = 16)) +
+  theme(legend.text.align = 0)
+
+# take a look!
+zoomin
+
+```
+
+```{r save-Fig2b}
+
+ggsave(zoomin, filename = "sulfate-d34S_subset.png",
+       width = 8,
+       height = 4,
+       bg = "transparent")
+
+```
+
+### Manuscript Supplementary Figure 1
+This figure depicts two points:
+1) that sulfur isotopes do not appear to be an artifact of soil lysimeter sampling methods, and
+2) that the pattern of sulfur isotope/concentration values is robust across vineyards and over time.
+
+It combines new data from this study with data from Hinckley et al. (2008).
+
+```{r plot-FigS1}
+
+#### Merge datasets ####
+
+# Subset data from this study
+newsoilwater <- filter(allnoF, sample_type == "soil water")
+newsoilwater <- newsoilwater[,c(10,15,16)]
+# names(newsoilwater)[2] <- "sulfate_asS_mgL"
+
+# Subset data from Hinckley et al. (2008)
+oldsoilwater <- hinckley[,c(4,6,7)]
+
+# Combine
+allsoilwater <- full_join(newsoilwater,oldsoilwater)
+
+
+#### Plot ####
+
+allsoilwaterplot <- ggplot() +
+  geom_point(data = allsoilwater,
+                     aes(sulfate_mgSperL,
+                         d34S,
+                         shape = sample_type,
+                         color = sample_type),
+             stroke = 1.1, size = 4) +
+  # add a logarithmic curve
+  stat_smooth(data = allsoilwater,
+                     aes(sulfate_mgSperL,
+                         d34S),
+              method = "lm",
+              formula = y ~ log(x),
+              se = FALSE,
+              color = "black",
+              linetype = "dashed") +
+  scale_shape_manual(name = "Sample Type",
+                     values = c(4, 2, 20, 21, 8)) +
+  scale_color_manual(name = "Sample Type",
+                     values = c("violetred","royalblue2","darkgrey","black","goldenrod1")) +
+  labs(x = expression(paste("SO"[4]^2^-{},"(mg S L"^-1,")")),
+       y = expression(paste(delta^{34}, "S-SO"[4]^2^-{}, "(\u2030)"))) +
+  #scale_x_continuous(limits = c(0, 80), breaks = seq(0, 80, 10)) + 
+  #scale_y_continuous(limits = c(0, 20), breaks = seq(0, 20, 5)) +
+  theme_bw() +
+  theme(axis.title.x = element_text(size = 20),
+        axis.text.x  = element_text(size = 20,
+                                    color = "black"),
+        axis.title.y = element_text(size = 20),
+        axis.text.y = element_text(size = 20,
+                                   color = "black"),
+        plot.title = element_text(size = 20),
+        legend.title = element_text(size = 20),
+        legend.text = element_text(size = 20),
+        legend.position = "right",
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        rect = element_rect(fill = "transparent"),
+        panel.background = element_rect(fill = "transparent", color = NA),
+        plot.background = element_rect(fill = "transparent", color = NA)) +
+  theme(legend.text.align = 0)
+
+# take a look!
+allsoilwaterplot
+
+```
+
+```{r save-FigS1}
+
+ggsave(allsoilwaterplot, filename = "sulfate-d34S_all-methods.png",
+       width = 12,
+       height = 6,
+       bg = "transparent")
+
+```
+
+# Statistics
+
+## Calculate summary statistics
+
+```{r summary-stats}
+
+# Calculate summary statistics by LULC type
+summarystats <- allnoF %>% group_by(lulc_abbrev) %>% summarise(meanSO4 = mean(sulfate_mgSperL),
+                                                               stdSO4 = sd(sulfate_mgSperL),
+                                                               medianSO4 = median(sulfate_mgSperL),
+                                                               iqrSO4 = IQR(sulfate_mgSperL),
+                                                               minSO4 = min(sulfate_mgSperL),
+                                                               maxSO4 = max(sulfate_mgSperL),
+                                                               meand34S = mean(d34S),
+                                                               stdd34S = sd(d34S),
+                                                               mediand34S = median(d34S),
+                                                               iqrd34S = IQR(d34S),
+                                                               mind34S = min(d34S),
+                                                               maxd34S = max(d34S),
+                                                               N = n())
+
+summarystats$rangeSO4 <- summarystats$maxSO4 - summarystats$minSO4
+summarystats$ranged34S <- abs(summarystats$maxd34S - summarystats$mind34S)
+
+summarystats
+
+
+# Calculate summary stats for Hinckley et al. (2008) data
+hinckley %>% group_by(sample_type) %>% summarise(meanSO4 = mean(sulfate_mgSperL),
+                                                 sdSO4 = sd(sulfate_mgSperL),
+                                                 medianSO4 = median(sulfate_mgSperL),
+                                                 iqrSO4 = IQR(sulfate_mgSperL),
+                                                 meand34S = mean(d34S),
+                                                 sdd34S = sd(d34S),
+                                                 mediand34S = median(d34S),
+                                                 iqrd34S = IQR(d34S),
+                                                 N = n())
+
+# Calculate summary stats for S fungicide samples
+allno %>% filter(sample_type == "sulfur fungicide") %>% summarise(mean = mean(d34S),
+                                                             median = median(d34S),
+                                                             iqr = IQR(d34S),
+                                                             min = min(d34S),
+                                                             max = max(d34S),
+                                                             N = n())
+
+# Calculate summary stats for Hermes et al. (2021) soil leachate
+leachfilt %>% group_by(site_type) %>% summarise(median = median(d34S, na.rm = TRUE),
+                                           iqr = IQR(d34S, na.rm = TRUE),
+                                           N = n())
+```
+
+## Analyze data
+The ideal test for this dataset is a manova, which would test for differences in the multivariate d34S and sulfate concentrations across LULC groups. 
+
+However, the data violate manova assumptions. First, a number of data points come from the same location at multiple points in time (non-independent), and second, the data are not normally distributed. 
+
+Thus, we use non-parametric statistical analyses. We first use a Kruskal Wallis rank sum test with adjusted p-values followed by Dunn's tests to determine differences across groups.
+
+For all statistical tests, we considered a p-value of < 0.05 significant.
+
+```{r non-parametric-tests}
+
+# First make lulc factor
+allnoF$lulc_abbrev <- as.factor(allnoF$lulc_abbrev)
+
+levels(allnoF$lulc_abbrev)
+# levels are "mixed", "napa river", "native", and "vineyard"
+
+
+#### Are differences in d34S across groups? ####
+kruskal.test(d34S ~ lulc_abbrev,
+             data = allnoF)
+
+# Kruskal-Wallis rank sum test
+# 
+# data:  d34S by lulc_abbrev
+# Kruskal-Wallis chi-squared = 55.768, df = 3, p-value = 4.708e-12
+
+# YES, there are differences across groups since the p-value is << 0.05
+
+# Follow with a post-hoc test with adjusted p-value to find what the differences are
+
+# The Dunn test
+dunnTest(d34S ~ lulc_abbrev,
+         data = allnoF,
+         method = "holm")
+#              Comparison          Z      P.unadj        P.adj
+# 1    mixed - napa river -3.1928356 1.408831e-03 4.226494e-03  Diff
+# 2        mixed - native  1.0262457 3.047758e-01 6.095515e-01  Not Diff
+# 3   napa river - native  4.4809773 7.430201e-06 3.715100e-05  Diff
+# 4      mixed - vineyard -4.3628198 1.283967e-05 5.135867e-05  Diff
+# 5 napa river - vineyard -0.1112654 9.114059e-01 9.114059e-01  Not Diff
+# 6     native - vineyard -6.7067004 1.990743e-11 1.194446e-10  Diff
+
+
+#### Are differences in [SO4] across groups? ####
+kruskal.test(sulfate_mgSperL ~ lulc_abbrev,
+             data = allnoF)
+
+# Kruskal-Wallis rank sum test
+# 
+# data:  final_sulfate_mgSperL by lulc_abbrev
+# Kruskal-Wallis chi-squared = 21.226, df = 3, p-value = 9.448e-05
+
+# YES, there are differences across groups since the p-value is << 0.05
+
+# Follow with a post-hoc test with adjusted p-value to find what the differences are
+
+# The Dunn test
+dunnTest(sulfate_mgSperL ~ lulc_abbrev,
+         data = allnoF,
+         method = "holm")
+#             Comparison          Z      P.unadj        P.adj
+# 1    mixed - napa river  0.8659865 3.864975e-01 1.0000000000  Not Diff
+# 2        mixed - native  3.5412571 3.982254e-04 0.0019911270  Diff
+# 3   napa river - native  2.2766814 2.280526e-02 0.0912210252  Not Diff
+# 4      mixed - vineyard  0.3669021 7.136921e-01 0.7136920766  Not Diff
+# 5 napa river - vineyard -0.7044557 4.811490e-01 0.9622980079  Not Diff
+# 6     native - vineyard -4.2878759 1.803898e-05 0.0001082339  Diff
+
+```
