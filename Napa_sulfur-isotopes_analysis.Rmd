@@ -63,7 +63,7 @@ summary(all)
 
 Remove outlier
 ```{r minus-outlier}
-# remove the funky irrigation water and d34S NA vals
+# remove an irrigation water sample collected during a spurious event and d34S NA vals
 allno <- filter(all, d34S < 22)
 
 ```
